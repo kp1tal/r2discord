@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+#include <dlfcn.h>
 #include <time.h>
 #include <r_core.h>
 #include "presence.h"
@@ -29,7 +31,10 @@ typedef struct {
 	R2DMode mode;
 	ut32 fileid; // RBinFile id + 1, 0 = no file
 	ut64 fcn;
+	// cache used only by function_at
+	bool seek_cached;
 	ut64 seek;
+	ut64 seek_fcn;
 	ut64 start;
 } R2DCtx;
 
@@ -56,6 +61,7 @@ static bool cb_showname(void *user, void *data) {
 	if (G) {
 		G->showname = n->i_value;
 		G->valid = false;
+		G->seek_cached = false;
 	}
 	return true;
 }
@@ -88,10 +94,9 @@ static bool cb_idle(void *user, void *data) {
 }
 
 static ut64 function_at(RCore *core, R2DCtx *c) {
-	if (c->valid && c->seek == core->addr) {
-		return c->fcn;
+	if (c->seek_cached && c->seek == core->addr) {
+		return c->seek_fcn;
 	}
-	c->seek = core->addr;
 	ut64 addr = UT64_MAX;
 	RList *l = r_anal_get_functions_in (core->anal, core->addr);
 	RAnalFunction *f = l? r_list_first (l): NULL;
@@ -99,6 +104,9 @@ static ut64 function_at(RCore *core, R2DCtx *c) {
 		addr = f->addr;
 	}
 	r_list_free (l);
+	c->seek = core->addr;
+	c->seek_fcn = addr;
+	c->seek_cached = true;
 	return addr;
 }
 
@@ -112,6 +120,9 @@ static void refresh(RCore *core, R2DCtx *c) {
 	ut64 fcn = (c->showname && mode == R2D_MODE_VISUAL)? function_at (core, c): UT64_MAX;
 	if (c->valid && mode == c->mode && fileid == c->fileid && fcn == c->fcn) {
 		return;
+	}
+	if (mode != c->mode || fileid != c->fileid) {
+		c->seek_cached = false;
 	}
 	if (!c->start || fileid != c->fileid) {
 		c->start = (ut64)time (NULL);
@@ -194,6 +205,7 @@ static bool r2d_init(RCorePluginSession *s) {
 	r2d_worker_set_idle (c->w, R2D_DEFAULT_IDLE);
 
 	RConfig *cfg = s->core->config;
+	bool was_locked = cfg->lock;
 	r_config_lock (cfg, false);
 	setdesc (r_config_set_cb (cfg, "discord.enabled", "true", cb_enabled),
 		"show radare2 activity as Discord Rich Presence");
@@ -205,7 +217,7 @@ static bool r2d_init(RCorePluginSession *s) {
 		"large image asset key of the Discord application");
 	setdesc (r_config_set_i_cb (cfg, "discord.idle", R2D_DEFAULT_IDLE, cb_idle),
 		"seconds without commands before showing Idle (0 = never)");
-	r_config_lock (cfg, true);
+	r_config_lock (cfg, was_locked);
 	c->ready = true;
 	return true;
 }
@@ -215,9 +227,26 @@ static bool r2d_fini(RCorePluginSession *s) {
 	if (!c) {
 		return true;
 	}
-	r2d_worker_free (c->w);
+	if (!r2d_worker_free (c->w)) {
+		// The worker thread is still running code in this library. Pin the
+		// .so so the dlclose that follows fini does not unmap it.
+		Dl_info di;
+		if (dladdr ((void *)r2d_fini, &di) && di.dli_fname) {
+			dlopen (di.dli_fname, RTLD_NOW | RTLD_NODELETE);
+		}
+	}
 	if (G == c) {
 		G = NULL;
+		// The setters point into this library; drop the vars before it goes.
+		RConfig *cfg = s->core->config;
+		bool was = cfg->lock;
+		r_config_lock (cfg, false);
+		r_config_rm (cfg, "discord.enabled");
+		r_config_rm (cfg, "discord.showname");
+		r_config_rm (cfg, "discord.appid");
+		r_config_rm (cfg, "discord.image");
+		r_config_rm (cfg, "discord.idle");
+		r_config_lock (cfg, was);
 	}
 	free (c);
 	s->data = NULL;

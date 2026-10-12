@@ -22,6 +22,8 @@ void r2d_worker_clear(R2DWorker *w);
 void r2d_worker_touch(R2DWorker *w);
 void r2d_worker_status(R2DWorker *w, char *buf, size_t len);
 // Clears the presence, closes the connection and joins the thread.
-void r2d_worker_free(R2DWorker *w);
+// Returns false if the thread did not stop in time and was detached (the
+// struct is then leaked on purpose); true otherwise, also for NULL.
+bool r2d_worker_free(R2DWorker *w);
 
 #endif

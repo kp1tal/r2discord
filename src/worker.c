@@ -271,9 +271,9 @@ void r2d_worker_status(R2DWorker *w, char *buf, size_t len) {
 	pthread_mutex_unlock (&w->mu);
 }
 
-void r2d_worker_free(R2DWorker *w) {
+bool r2d_worker_free(R2DWorker *w) {
 	if (!w) {
-		return;
+		return true;
 	}
 	pthread_mutex_lock (&w->mu);
 	w->stop = true;
@@ -286,7 +286,7 @@ void r2d_worker_free(R2DWorker *w) {
 			// freed memory. Only happens with an unresponsive Discord at exit.
 			pthread_detach (w->th);
 			pthread_mutex_unlock (&w->mu);
-			return;
+			return false;
 		}
 		struct timespec ts;
 		clock_gettime (CLOCK_REALTIME, &ts);
@@ -304,4 +304,5 @@ void r2d_worker_free(R2DWorker *w) {
 	pthread_mutex_destroy (&w->mu);
 	pthread_cond_destroy (&w->cv);
 	free (w);
+	return true;
 }

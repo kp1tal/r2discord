@@ -12,13 +12,14 @@ cleanup() {
 trap cleanup EXIT
 sock="$tmp/discord-ipc-0"
 log="$tmp/frames.log"
+cp /bin/ls "$tmp/r2d_secret_bin"
 "$here/build/fake_discord" "$sock" >"$log" &
 fpid=$!
 i=0
 while [ ! -S "$sock" ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
 
 R2DISCORD_IPC_PATH="$sock" r2 -q -N \
-	-c "L $here/build/core_discord.$ext; aaa; discord; !sleep 1" /bin/ls >"$tmp/r2.out" 2>&1
+	-c "L $here/build/core_discord.$ext; aaa; discord; !sleep 1" "$tmp/r2d_secret_bin" >"$tmp/r2.out" 2>&1
 
 sleep 0.5
 kill "$fpid"
@@ -34,7 +35,7 @@ fail() {
 grep -q '^0 .*"client_id":"1559252980589535242"' "$log" || fail "no handshake"
 grep -Eq '^1 .*"details":"Analyzing an? [^"]+ binary"' "$log" || fail "no presence"
 grep -q '"state":"At the prompt"' "$log" || fail "wrong state"
-if grep -q '"details":"Analyzing ls' "$log"; then fail "file name leaked"; fi
+if grep -q 'r2d_secret_bin' "$log"; then fail "file name leaked"; fi
 n=$(grep -c '^1 .*"details"' "$log")
 [ "$n" -le 2 ] || fail "too many updates: $n"
 grep -q '^1 .*"activity":null' "$log" || fail "no clear on exit"
