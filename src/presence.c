@@ -10,36 +10,23 @@
 typedef struct {
 	const char *name;
 	const char *label;
-	const char *article;
 } FormatName;
 
 static const FormatName formats[] = {
-	{ "elf", "ELF", "an" },
-	{ "elf64", "ELF", "an" },
-	{ "pe", "PE", "a" },
-	{ "pe64", "PE", "a" },
-	{ "mach0", "Mach-O", "a" },
-	{ "mach064", "Mach-O", "a" },
-	{ "dex", "DEX", "a" },
-	{ "wasm", "Wasm", "a" },
-	{ "mz", "MZ", "an" },
-	{ "any", "raw", "a" },
-	{ NULL, NULL, NULL }
+	{ "elf", "ELF" },
+	{ "elf64", "ELF" },
+	{ "pe", "PE" },
+	{ "pe64", "PE" },
+	{ "mach0", "Mach-O" },
+	{ "mach064", "Mach-O" },
+	{ "dex", "DEX" },
+	{ "wasm", "Wasm" },
+	{ "mz", "MZ" },
+	{ "any", "raw" },
+	{ NULL, NULL }
 };
 
-// "an x86", "an ARM64", "an ELF" but "a PE", "a mips"
-static const char *article_for(const char *s) {
-	if (!s || !*s) {
-		return "a";
-	}
-	if (strchr ("AEIOUaeiou", s[0])) {
-		return "an";
-	}
-	return ((s[0] == 'x' || s[0] == 'X') && isdigit ((unsigned char)s[1]))? "an": "a";
-}
-
-static void format_label(const char *fmt, char *buf, size_t len, const char **article) {
-	*article = "a";
+static void format_label(const char *fmt, char *buf, size_t len) {
 	buf[0] = 0;
 	if (!fmt || !*fmt) {
 		return;
@@ -47,7 +34,6 @@ static void format_label(const char *fmt, char *buf, size_t len, const char **ar
 	for (const FormatName *f = formats; f->name; f++) {
 		if (!strcmp (f->name, fmt)) {
 			snprintf (buf, len, "%s", f->label);
-			*article = f->article;
 			return;
 		}
 	}
@@ -56,7 +42,6 @@ static void format_label(const char *fmt, char *buf, size_t len, const char **ar
 		buf[i] = toupper ((unsigned char)fmt[i]);
 	}
 	buf[i] = 0;
-	*article = article_for (buf);
 }
 
 static void arch_label(const char *arch, int bits, char *buf, size_t len) {
@@ -94,72 +79,68 @@ void r2d_utf8_copy(char *dst, size_t dstlen, const char *src) {
 	dst[i] = 0;
 }
 
-// " · 312 functions · 4 breakpoints"
+// " · 312 fns · 4 bps"; abbreviated because Discord's profile card only
+// shows ~33 characters per line
 static void stats_suffix(const R2DPresenceInput *in, char *buf, size_t len) {
 	buf[0] = 0;
 	size_t n = 0;
 	if (in->functions > 0) {
-		n += snprintf (buf + n, len - n, " · %d function%s",
+		n += snprintf (buf + n, len - n, " · %d fn%s",
 			in->functions, in->functions == 1? "": "s");
 	}
 	if (in->mode == R2D_MODE_DEBUG && in->breakpoints > 0 && n < len) {
-		snprintf (buf + n, len - n, " · %d breakpoint%s",
+		snprintf (buf + n, len - n, " · %d bp%s",
 			in->breakpoints, in->breakpoints == 1? "": "s");
 	}
 }
 
 void r2d_presence_text(const R2DPresenceInput *in, R2DText *out) {
 	char buf[512];
+	r2d_utf8_copy (out->idle_state, sizeof out->idle_state, "💤 Idle");
 	if (in->mode == R2D_MODE_NOFILE) {
 		r2d_utf8_copy (out->details, sizeof out->details, "radare2");
 		r2d_utf8_copy (out->state, sizeof out->state, "📂 No file loaded");
-		r2d_utf8_copy (out->idle_state, sizeof out->idle_state, "💤 Idle");
 		return;
 	}
-	char fmt[32], arch[64], desc[100];
-	const char *article;
-	format_label (in->format, fmt, sizeof fmt, &article);
+	// details: "[file · ]x86-64 ELF · 312 fns · 4 bps"
+	char fmt[32], arch[64], desc[100], stats[64];
+	format_label (in->format, fmt, sizeof fmt);
 	arch_label (in->arch, in->bits, arch, sizeof arch);
-	// "x86-64 ELF"; without a format it reads "x86-64 binary"
-	snprintf (desc, sizeof desc, "%s%s%s", arch, (*fmt && *arch)? " ": "", fmt);
-	if (*arch) {
-		article = article_for (arch);
-	}
-	if (in->showname && in->filename && *in->filename) {
-		if (*desc) {
-			snprintf (buf, sizeof buf, "Reversing %s (%s)", in->filename, desc);
-		} else {
-			snprintf (buf, sizeof buf, "Reversing %s", in->filename);
-		}
-	} else if (*fmt) {
-		snprintf (buf, sizeof buf, "Reversing %s %s", article, desc);
-	} else if (*desc) {
-		snprintf (buf, sizeof buf, "Reversing %s %s binary", article, desc);
+	if (*arch && *fmt) {
+		snprintf (desc, sizeof desc, "%s %s", arch, fmt);
+	} else if (*arch || *fmt) {
+		snprintf (desc, sizeof desc, "%s%s", *arch? arch: fmt, *fmt? "": " binary");
 	} else {
-		snprintf (buf, sizeof buf, "Reversing a binary");
+		snprintf (desc, sizeof desc, "binary");
+	}
+	stats_suffix (in, stats, sizeof stats);
+	bool named = in->showname && in->filename && *in->filename;
+	if (named && !*arch && !*fmt) {
+		snprintf (buf, sizeof buf, "%s%s", in->filename, stats);
+	} else if (named) {
+		snprintf (buf, sizeof buf, "%s · %s%s", in->filename, desc, stats);
+	} else {
+		snprintf (buf, sizeof buf, "%s%s", desc, stats);
 	}
 	r2d_utf8_copy (out->details, sizeof out->details, buf);
 
-	char stats[128];
-	stats_suffix (in, stats, sizeof stats);
+	// state: just the mode, short enough to never be cut
 	switch (in->mode) {
 	case R2D_MODE_DEBUG:
-		snprintf (buf, sizeof buf, "🐞 Debugging%s", stats);
+		snprintf (buf, sizeof buf, "🐞 Debugging");
 		break;
 	case R2D_MODE_VISUAL:
 		if (in->showname && in->function && *in->function) {
-			snprintf (buf, sizeof buf, "👁 %s%s", in->function, stats);
+			snprintf (buf, sizeof buf, "👁 %s", in->function);
 		} else {
-			snprintf (buf, sizeof buf, "👁 Visual mode%s", stats);
+			snprintf (buf, sizeof buf, "👁 Visual mode");
 		}
 		break;
 	default:
-		snprintf (buf, sizeof buf, "⌨️ Prompt%s", stats);
+		snprintf (buf, sizeof buf, "⌨️ Prompt");
 		break;
 	}
 	r2d_utf8_copy (out->state, sizeof out->state, buf);
-	snprintf (buf, sizeof buf, "💤 Idle%s", stats);
-	r2d_utf8_copy (out->idle_state, sizeof out->idle_state, buf);
 }
 
 char *r2d_activity_json(const char *details, const char *state, uint64_t start,
