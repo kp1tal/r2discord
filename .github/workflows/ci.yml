@@ -1,0 +1,33 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install radare2 6.2.0
+        run: |
+          for p in radare2 radare2-dev; do
+            curl -sSfLO "https://github.com/radareorg/radare2/releases/download/6.2.0/${p}_6.2.0_amd64.deb"
+          done
+          sudo apt-get install -y ./radare2_6.2.0_amd64.deb ./radare2-dev_6.2.0_amd64.deb pkg-config
+          r2 -v
+      - run: make
+      - run: make test
+      - run: make integration
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install radare2
+        run: |
+          brew install radare2 pkg-config
+          r2 -v
+      - run: make
+      - run: make test
+      - run: make integration

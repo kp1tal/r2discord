@@ -17,13 +17,25 @@ It is private by default: file and function names are only shown after
 Requirements: radare2 ≥ 6.2 with its development headers, a C compiler,
 `make`, `pkg-config`. Linux or macOS.
 
+With r2pm (once the package is in the r2pm database):
+
 ```sh
+r2pm -U
+r2pm -ci r2discord
+```
+
+From source:
+
+```sh
+git clone https://github.com/kp1tal/r2discord
+cd r2discord
 make
 make install      # copies the plugin to $(r2 -H R2_USER_PLUGINS)
 ```
 
 Restart r2. The presence starts after the first command you run; `discord`
-then shows the connection status.
+then shows the connection status. To remove it: `r2pm -u r2discord` or
+`make uninstall`.
 
 ## Configuration
 

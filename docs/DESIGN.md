@@ -131,5 +131,5 @@ last-activity time (an atomic store) for idle tracking.
 
 ## Distribution
 
-GitHub repo + PR to `radareorg/r2pm-db` so `r2pm -ci r2discord` works.
+GitHub repo + PR adding `r2pm/r2discord` as `db/r2discord` to `radareorg/radare2-pm`, so `r2pm -ci r2discord` works.
 License MIT. Publication only with the author's explicit go-ahead.
