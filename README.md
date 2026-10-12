@@ -5,8 +5,9 @@ Discord Rich Presence for [radare2](https://github.com/radareorg/radare2).
 Shows what you are doing in r2 on your Discord profile:
 
 > **radare2**
-> Analyzing an ELF x86-64 binary
-> In visual mode · 00:12:34 elapsed
+> Reversing an x86-64 ELF
+> 🐞 Debugging · 312 functions · 4 breakpoints
+> 00:12:34 elapsed
 
 It is private by default: file and function names are only shown after
 `e discord.showname=true`.
@@ -40,14 +41,18 @@ Put your choices in `~/.radare2rc`, e.g. `e discord.showname=true`.
 
 | You are | Details | State |
 |---|---|---|
-| r2 with no file | radare2 | No file loaded |
-| at the prompt | Analyzing an ELF x86-64 binary | At the prompt |
-| in visual/graph/panels | Analyzing an ELF x86-64 binary | In visual mode |
-| debugging | Debugging an ELF x86-64 binary | Debugger attached |
-| away for `discord.idle` s | (unchanged) | Idle |
+| r2 with no file | radare2 | 📂 No file loaded |
+| at the prompt | Reversing an x86-64 ELF | ⌨️ Prompt · 312 functions |
+| in visual/graph/panels | Reversing an x86-64 ELF | 👁 Visual mode · 312 functions |
+| debugging | Reversing an x86-64 ELF | 🐞 Debugging · 312 functions · 4 breakpoints |
+| away for `discord.idle` s | (unchanged) | 💤 Idle · 312 functions |
 
-With `discord.showname=true`, details become `Analyzing <file> (ELF x86-64)`
-and in visual mode the state becomes `In <function>`.
+The function count appears once r2 knows about functions (e.g. after `aaa`);
+breakpoints are only listed while debugging. Hovering the logo shows the
+radare2 version.
+
+With `discord.showname=true`, details become `Reversing <file> (x86-64 ELF)`
+and in visual mode the state becomes `👁 <function> · 312 functions`.
 
 The presence follows the state radare2 was in when you typed your last command, so a mode change shows up on the next command.
 

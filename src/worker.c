@@ -102,7 +102,8 @@ static void maybe_send(R2DWorker *w, uint64_t now) {
 	uint64_t lt = __atomic_load_n (&w->last_touch_ms, __ATOMIC_RELAXED);
 	bool idle = w->have && w->idle_s > 0 && lt <= now
 		&& now - lt > (uint64_t)w->idle_s * 1000;
-	const char *state = idle? "Idle": w->text.state;
+	const char *state = !idle? w->text.state
+		: w->text.idle_state[0]? w->text.idle_state: "Idle";
 	char key[KEY_MAX];
 	if (w->have) {
 		snprintf (key, sizeof key, "%s\n%s\n%llu\n%s", w->text.details, state,

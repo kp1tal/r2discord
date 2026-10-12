@@ -21,7 +21,7 @@ static FakeDiscord *start_fake(const char *name, bool reject, char *path, size_t
 }
 
 static void upd(R2DWorker *w, const char *details, const char *state) {
-	R2DText t;
+	R2DText t = {0};
 	r2d_utf8_copy (t.details, sizeof t.details, details);
 	r2d_utf8_copy (t.state, sizeof t.state, state);
 	r2d_worker_update (w, &t, 1700000000);
@@ -131,6 +131,25 @@ static void test_settle_first_send(void) {
 	fd_stop (f);
 }
 
+// the idle line comes prebuilt from presence (keeps the stats)
+static void test_idle_text(void) {
+	char p[300];
+	FakeDiscord *f = start_fake ("idletext.sock", false, p, sizeof p);
+	R2DWorker *w = r2d_worker_new (&fast);
+	r2d_worker_set_app (w, "1", "r2");
+	r2d_worker_set_idle (w, 1);
+	r2d_worker_touch (w);
+	R2DText t = {0};
+	r2d_utf8_copy (t.details, sizeof t.details, "Reversing an x86-64 ELF");
+	r2d_utf8_copy (t.state, sizeof t.state, "⌨️ Prompt · 3 functions");
+	r2d_utf8_copy (t.idle_state, sizeof t.idle_state, "💤 Idle · 3 functions");
+	r2d_worker_update (w, &t, 1700000000);
+	CHECK (fd_wait (f, R2D_OP_FRAME, "Prompt · 3 functions", 1, 1000)); // PJ escapes U+FE0F
+	CHECK (fd_wait (f, R2D_OP_FRAME, "💤 Idle · 3 functions", 1, 2500));
+	r2d_worker_free (w);
+	fd_stop (f);
+}
+
 static void test_bounded_free(void) {
 	char p[300];
 	snprintf (p, sizeof p, "%s/mute.sock", tmpdir);
@@ -215,6 +234,7 @@ int main(void) {
 	test_no_discord ();
 	test_bounded_free ();
 	test_settle_first_send ();
+	test_idle_text ();
 	char cmd[300];
 	snprintf (cmd, sizeof cmd, "rm -rf '%s'", tmpdir);
 	(void)!system (cmd);

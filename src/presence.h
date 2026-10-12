@@ -20,6 +20,8 @@ typedef struct {
 	const char *filename; // basename; only shown with showname
 	const char *function; // current function; only shown with showname in visual mode
 	bool showname;
+	int functions;        // analyzed functions; 0 hides the count
+	int breakpoints;      // only shown while debugging; 0 hides the count
 } R2DPresenceInput;
 
 // Discord limits details/state to 128 bytes
@@ -28,6 +30,7 @@ typedef struct {
 typedef struct {
 	char details[R2D_TEXT_MAX];
 	char state[R2D_TEXT_MAX];
+	char idle_state[R2D_TEXT_MAX]; // replaces state after discord.idle seconds
 } R2DText;
 
 void r2d_presence_text(const R2DPresenceInput *in, R2DText *out);

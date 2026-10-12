@@ -32,6 +32,8 @@ typedef struct {
 	R2DMode mode;
 	ut32 fileid; // RBinFile id + 1, 0 = no file
 	ut64 fcn;
+	int functions;
+	int breakpoints;
 	// cache used only by function_at
 	bool seek_cached;
 	ut64 seek;
@@ -124,12 +126,17 @@ static void refresh(RCore *core, R2DCtx *c) {
 		: core->vmode? R2D_MODE_VISUAL
 		: R2D_MODE_PROMPT;
 	ut32 fileid = bf? bf->id + 1: 0;
-	ut64 fcn = (c->showname && mode == R2D_MODE_VISUAL)? function_at (core, c): UT64_MAX;
-	if (c->valid && mode == c->mode && fileid == c->fileid && fcn == c->fcn) {
-		return;
-	}
 	if (mode != c->mode || fileid != c->fileid) {
 		c->seek_cached = false;
+	}
+	ut64 fcn = (c->showname && mode == R2D_MODE_VISUAL)? function_at (core, c): UT64_MAX;
+	// both lists keep their length, so counting is O(1) on the hot path
+	int functions = (core->anal && core->anal->fcns)? r_list_length (core->anal->fcns): 0;
+	int breakpoints = (mode == R2D_MODE_DEBUG && core->dbg && core->dbg->bp && core->dbg->bp->bps)
+		? r_list_length (core->dbg->bp->bps): 0;
+	if (c->valid && mode == c->mode && fileid == c->fileid && fcn == c->fcn
+			&& functions == c->functions && breakpoints == c->breakpoints) {
+		return;
 	}
 	if (!c->start || fileid != c->fileid) {
 		c->start = (ut64)time (NULL);
@@ -138,6 +145,8 @@ static void refresh(RCore *core, R2DCtx *c) {
 	c->mode = mode;
 	c->fileid = fileid;
 	c->fcn = fcn;
+	c->functions = functions;
+	c->breakpoints = breakpoints;
 
 	RBinInfo *info = bf? r_bin_get_info (core->bin): NULL;
 	RAnalFunction *f = fcn != UT64_MAX? r_anal_get_function_at (core->anal, fcn): NULL;
@@ -149,6 +158,8 @@ static void refresh(RCore *core, R2DCtx *c) {
 		.filename = (bf && bf->file)? r_file_basename (bf->file): NULL,
 		.function = f? f->name: NULL,
 		.showname = c->showname,
+		.functions = functions,
+		.breakpoints = breakpoints,
 	};
 	R2DText t;
 	r2d_presence_text (&in, &t);

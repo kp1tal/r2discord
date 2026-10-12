@@ -37,8 +37,10 @@ wait "$fpid" 2>/dev/null || true
 fpid=
 
 grep -q '^0 .*"client_id":"1559252980589535242"' "$log" || fail "no handshake"
-grep -Eq '^1 .*"details":"Analyzing an? [^"]+ binary"' "$log" || fail "no presence"
-grep -q '"state":"At the prompt"' "$log" || fail "wrong state"
+grep -Eq '^1 .*"details":"Reversing an? [^"]+"' "$log" || fail "no presence"
+# after aaa the prompt line carries the function count (PJ escapes U+FE0F)
+grep -Eq '"state":"[^"]*Prompt · [0-9]+ functions?"' "$log" || fail "wrong state (no function count)"
+grep -q '"large_text":"radare2 [0-9]' "$log" || fail "no r2 version on hover"
 if grep -q 'r2d_secret_bin' "$log"; then fail "file name leaked"; fi
 n=$(grep -c '^1 .*"details"' "$log")
 [ "$n" -le 2 ] || fail "too many updates: $n"
