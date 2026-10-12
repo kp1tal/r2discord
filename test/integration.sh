@@ -26,7 +26,7 @@ fail() {
 	exit 1
 }
 
-if ! R2DISCORD_IPC_PATH="$sock" r2 -q -N -e scr.interactive=true \
+if ! R2DISCORD_IPC_PATH="$sock" r2 -q -NN -e scr.interactive=true \
 	-c "L $here/build/core_discord.$ext; aaa; discord; !sleep 1" "$tmp/r2d_secret_bin" >"$tmp/r2.out" 2>&1; then
 	fail "r2 exited with an error"
 fi
@@ -53,7 +53,7 @@ log="$tmp/frames2.log"
 fpid=$!
 i=0
 while [ ! -S "$sock" ] && [ $i -lt 50 ]; do sleep 0.1; i=$((i + 1)); done
-if ! R2DISCORD_IPC_PATH="$sock" r2 -q -N \
+if ! R2DISCORD_IPC_PATH="$sock" r2 -q -NN \
 	-c "L $here/build/core_discord.$ext; aaa; discord; !sleep 1" "$tmp/r2d_secret_bin" >"$tmp/r2.out" 2>&1; then
 	fail "r2 (non interactive) exited with an error"
 fi

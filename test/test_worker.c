@@ -12,7 +12,7 @@
 #include "../src/worker.h"
 
 static char tmpdir[256];
-static const R2DWorkerTiming fast = { 50, 50, 200 };
+static const R2DWorkerTiming fast = { 50, 50, 200, 0 };
 
 static FakeDiscord *start_fake(const char *name, bool reject, char *path, size_t len) {
 	snprintf (path, len, "%s/%s", tmpdir, name);
@@ -61,7 +61,7 @@ static void test_basic_and_free(void) {
 static void test_coalesce(void) {
 	char p[300];
 	FakeDiscord *f = start_fake ("burst.sock", false, p, sizeof p);
-	R2DWorkerTiming slow = { 300, 50, 200 };
+	R2DWorkerTiming slow = { 300, 50, 200, 0 };
 	R2DWorker *w = r2d_worker_new (&slow);
 	r2d_worker_set_app (w, "1", "r2");
 	upd (w, "d", "s0");
@@ -109,6 +109,24 @@ static void test_idle_disabled(void) {
 	CHECK (fd_wait (f, R2D_OP_FRAME, "At the prompt", 1, 1000));
 	usleep (1500000);
 	CHECK (fd_count (f, R2D_OP_FRAME, "\"Idle\"") == 0);
+	r2d_worker_free (w);
+	fd_stop (f);
+}
+
+// r2 runs commands while it is still opening the file, so the first snapshot
+// is often "No file loaded"; it must be replaced before anything is sent.
+static void test_settle_first_send(void) {
+	char p[300];
+	FakeDiscord *f = start_fake ("settle.sock", false, p, sizeof p);
+	R2DWorkerTiming settle = { 50, 50, 200, 300 };
+	R2DWorker *w = r2d_worker_new (&settle);
+	r2d_worker_set_app (w, "1", "r2");
+	upd (w, "radare2", "No file loaded");
+	CHECK (fd_wait (f, R2D_OP_HANDSHAKE, NULL, 1, 2000));
+	usleep (100000);
+	upd (w, "Analyzing an ELF x86-64 binary", "At the prompt");
+	CHECK (fd_wait (f, R2D_OP_FRAME, "Analyzing an ELF x86-64 binary", 1, 2000));
+	CHECK (fd_count (f, R2D_OP_FRAME, "No file loaded") == 0);
 	r2d_worker_free (w);
 	fd_stop (f);
 }
@@ -196,6 +214,7 @@ int main(void) {
 	test_rejected ();
 	test_no_discord ();
 	test_bounded_free ();
+	test_settle_first_send ();
 	char cmd[300];
 	snprintf (cmd, sizeof cmd, "rm -rf '%s'", tmpdir);
 	(void)!system (cmd);

@@ -12,6 +12,8 @@ typedef struct {
 	int min_interval_ms; // min time between SET_ACTIVITY sends
 	int backoff_min_ms;  // first reconnect delay
 	int backoff_max_ms;  // reconnect delay cap
+	int settle_ms;       // the first send of a connection waits until the
+	                     // presence has been unchanged this long
 } R2DWorkerTiming;
 
 R2DWorker *r2d_worker_new(const R2DWorkerTiming *t);

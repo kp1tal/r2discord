@@ -198,7 +198,7 @@ static bool r2d_init(RCorePluginSession *s) {
 	if (!c) {
 		return false;
 	}
-	R2DWorkerTiming t = { 4000, 5000, 60000 };
+	R2DWorkerTiming t = { 4000, 5000, 60000, 500 };
 	c->w = r2d_worker_new (&t);
 	if (!c->w) {
 		free (c);

@@ -26,6 +26,7 @@ struct R2DWorker {
 	bool have;
 	R2DText text;
 	uint64_t start;
+	uint64_t last_update_ms;
 	int idle_s;
 	uint64_t last_touch_ms; // atomic
 	// connection state (thread only, except where noted)
@@ -113,6 +114,11 @@ static void maybe_send(R2DWorker *w, uint64_t now) {
 		return;
 	}
 	if (w->sent_key[0] && now - w->last_send_ms < (uint64_t)w->t.min_interval_ms) {
+		return;
+	}
+	// r2 runs commands while it is still opening the file: don't let that
+	// transient presence use up the rate limit on a fresh connection
+	if (!w->sent_key[0] && w->have && now < w->last_update_ms + (uint64_t)w->t.settle_ms) {
 		return;
 	}
 	char *json = w->have
@@ -244,6 +250,7 @@ void r2d_worker_update(R2DWorker *w, const R2DText *text, uint64_t start) {
 	w->text = *text;
 	w->start = start;
 	w->have = true;
+	w->last_update_ms = now_ms ();
 	pthread_cond_signal (&w->cv);
 	pthread_mutex_unlock (&w->mu);
 }
