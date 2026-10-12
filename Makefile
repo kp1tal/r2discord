@@ -1,3 +1,4 @@
+# r2discord - MIT - Copyright 2026 - kp1tal
 CC ?= cc
 CFLAGS ?= -O2 -g
 CFLAGS += -std=gnu11 -Wall -Wextra -fPIC
@@ -16,7 +17,7 @@ build:
 	mkdir -p build
 
 $(PLUGIN): src/core_discord.c $(LIB_SRCS) src/*.h | build
-	$(CC) $(CFLAGS) $(R2_CFLAGS) -shared -o $@ src/core_discord.c $(LIB_SRCS) $(R2_LIBS) -lpthread
+	$(CC) $(CFLAGS) $(R2_CFLAGS) -shared -o $@ src/core_discord.c $(LIB_SRCS) $(R2_LIBS) -lpthread -ldl
 
 build/test_presence: test/test_presence.c src/presence.c src/presence.h test/t.h | build
 	$(CC) $(CFLAGS) $(UTIL_CFLAGS) -o $@ test/test_presence.c src/presence.c $(UTIL_LIBS)
@@ -40,10 +41,12 @@ integration: $(PLUGIN) build/fake_discord
 	EXT=$(EXT) sh test/integration.sh
 
 install: $(PLUGIN)
+	@test -n "$(PLUGDIR)" || { echo "r2 not found in PATH; set PLUGDIR=..."; exit 1; }
 	mkdir -p "$(PLUGDIR)"
 	cp $(PLUGIN) "$(PLUGDIR)/"
 
 uninstall:
+	@test -n "$(PLUGDIR)" || { echo "r2 not found in PATH; set PLUGDIR=..."; exit 1; }
 	rm -f "$(PLUGDIR)/core_discord.$(EXT)"
 
 clean:

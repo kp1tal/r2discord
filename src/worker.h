@@ -1,5 +1,7 @@
+/* r2discord - MIT - Copyright 2026 - kp1tal */
 #ifndef R2D_WORKER_H
 #define R2D_WORKER_H
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include "presence.h"

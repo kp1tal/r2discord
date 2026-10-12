@@ -21,7 +21,8 @@ make
 make install      # copies the plugin to $(r2 -H R2_USER_PLUGINS)
 ```
 
-Restart r2. `discord` should print the connection status.
+Restart r2. The presence starts after the first command you run; `discord`
+then shows the connection status.
 
 ## Configuration
 
@@ -45,15 +46,23 @@ Put your choices in `~/.radare2rc`, e.g. `e discord.showname=true`.
 | debugging | Debugging an ELF x86-64 binary | Debugger attached |
 | away for `discord.idle` s | (unchanged) | Idle |
 
+With `discord.showname=true`, details become `Analyzing <file> (ELF x86-64)`
+and in visual mode the state becomes `In <function>`.
+
 The presence follows the state radare2 was in when you typed your last command, so a mode change shows up on the next command.
 
 ## How it works
 
 The plugin talks to the local Discord client over its IPC Unix socket
 (`discord-ipc-N` under `$XDG_RUNTIME_DIR`, `$TMPDIR` or `/tmp`, including the
-Flatpak and Snap locations). Nothing is sent over the network by the plugin.
+Flatpak and Snap locations). The plugin itself sends nothing over the network; Discord shows the presence
+to your friends.
 A background thread sends at most one update every 4 seconds and reconnects
-when Discord restarts. r2 is never blocked waiting for Discord.
+when Discord restarts. r2 is never blocked waiting for Discord while you work; quitting waits at most
+about a second if Discord is not responding.
+
+The presence is only published in interactive sessions: scripts, `r2 -qc` and
+r2pipe do not touch Discord.
 
 Set `R2DISCORD_IPC_PATH` to force a specific socket path.
 

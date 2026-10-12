@@ -1,3 +1,4 @@
+/* r2discord - MIT - Copyright 2026 - kp1tal */
 #ifndef FAKE_DISCORD_H
 #define FAKE_DISCORD_H
 #include <stdbool.h>

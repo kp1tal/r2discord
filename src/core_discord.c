@@ -1,3 +1,4 @@
+/* r2discord - MIT - Copyright 2026 - kp1tal */
 #define _GNU_SOURCE
 #include <dlfcn.h>
 #include <time.h>
@@ -69,6 +70,12 @@ static bool cb_showname(void *user, void *data) {
 static bool cb_appid(void *user, void *data) {
 	RCore *core = user;
 	RConfigNode *n = data;
+	// Discord application ids are numeric snowflakes
+	const char *v = n->value;
+	size_t len = v? strlen (v): 0;
+	if (len < 1 || len >= 32 || strspn (v, "0123456789") != len) {
+		return false;
+	}
 	if (G && G->ready) {
 		r2d_worker_set_app (G->w, n->value, r_config_get (core->config, "discord.image"));
 	}
@@ -169,7 +176,7 @@ static bool r2d_call(RCorePluginSession *s, const char *input) {
 		}
 		return true;
 	}
-	if (c->enabled) {
+	if (c->enabled && r_cons_is_interactive (core->cons)) {
 		r2d_worker_touch (c->w);
 		refresh (core, c);
 	}

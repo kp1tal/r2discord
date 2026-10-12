@@ -1,3 +1,4 @@
+/* r2discord - MIT - Copyright 2026 - kp1tal */
 #include <ctype.h>
 #include <inttypes.h>
 #include <stdio.h>

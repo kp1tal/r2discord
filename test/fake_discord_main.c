@@ -1,3 +1,4 @@
+/* r2discord - MIT - Copyright 2026 - kp1tal */
 #include <signal.h>
 #include <stdio.h>
 #include <unistd.h>

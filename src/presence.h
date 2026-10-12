@@ -1,3 +1,4 @@
+/* r2discord - MIT - Copyright 2026 - kp1tal */
 #ifndef R2D_PRESENCE_H
 #define R2D_PRESENCE_H
 #include <stdbool.h>

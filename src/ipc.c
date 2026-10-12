@@ -1,3 +1,4 @@
+/* r2discord - MIT - Copyright 2026 - kp1tal */
 #define _GNU_SOURCE
 #include <errno.h>
 #include <fcntl.h>

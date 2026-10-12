@@ -1,3 +1,4 @@
+/* r2discord - MIT - Copyright 2026 - kp1tal */
 #ifndef R2D_T_H
 #define R2D_T_H
 #include <stdio.h>

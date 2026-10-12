@@ -1,3 +1,4 @@
+/* r2discord - MIT - Copyright 2026 - kp1tal */
 #include <r_util.h>
 #include "t.h"
 #include "../src/presence.h"
