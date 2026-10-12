@@ -27,7 +27,7 @@ It is private by default: file and function names are only shown after
 Requirements: radare2 ≥ 6.2 with its development headers, a C compiler,
 `make`, `pkg-config`. Linux or macOS.
 
-With r2pm (once the package is in the r2pm database):
+With r2pm:
 
 ```sh
 r2pm -U
