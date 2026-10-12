@@ -23,6 +23,7 @@ typedef enum {
 // only path tried.
 int r2d_ipc_connect(void);
 R2DIpcStatus r2d_ipc_handshake(int fd, const char *appid, char *err, size_t errlen);
+// false means the connection is unusable and must be closed
 bool r2d_ipc_send(int fd, uint32_t op, const char *json);
 // 1 = message stored in *json (caller frees), 0 = timeout, -1 = error/EOF
 int r2d_ipc_recv(int fd, uint32_t *op, char **json, int timeout_ms);

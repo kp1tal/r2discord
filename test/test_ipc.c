@@ -77,6 +77,8 @@ static void test_discovery(void) {
 	unsetenv ("R2DISCORD_IPC_PATH");
 	setenv ("XDG_RUNTIME_DIR", tmpdir, 1);
 	setenv ("TMPDIR", tmpdir, 1);
+	setenv ("TMP", tmpdir, 1);
+	setenv ("TEMP", tmpdir, 1);
 	char p[300];
 	sock_path (p, sizeof p, "discord-ipc-3");
 	FakeDiscord *f = fd_start (p, false);
@@ -106,6 +108,79 @@ static void test_discovery(void) {
 	fd_stop (f);
 }
 
+static int connect_fake(FakeDiscord **f, const char *name) {
+	char p[300];
+	sock_path (p, sizeof p, name);
+	*f = fd_start (p, false);
+	setenv ("R2DISCORD_IPC_PATH", p, 1);
+	int fd = r2d_ipc_connect ();
+	char err[64];
+	CHECK (fd >= 0);
+	CHECK (r2d_ipc_handshake (fd, "1", err, sizeof err) == R2D_IPC_OK);
+	return fd;
+}
+
+static void pump_until(int fd, char *err, size_t len, bool *alive, int *tries) {
+	for (*tries = 0; *tries < 100; (*tries)++) {
+		usleep (10000);
+		*alive = r2d_ipc_pump (fd, err, len);
+		if (!*alive || *err) {
+			break;
+		}
+	}
+}
+
+static void test_pump_error_frame(void) {
+	FakeDiscord *f;
+	int fd = connect_fake (&f, "perr.sock");
+	char err[128] = "";
+	bool alive = true;
+	int t;
+	const char *j = "{\"evt\":\"ERROR\",\"data\":{\"message\":\"boom\"}}";
+	fd_send_raw (f, R2D_OP_FRAME, j, strlen (j));
+	pump_until (fd, err, sizeof err, &alive, &t);
+	CHECK (alive);
+	CHECK (!strcmp (err, "boom"));
+	close (fd);
+	fd_stop (f);
+}
+
+static void test_pump_close(void) {
+	FakeDiscord *f;
+	int fd = connect_fake (&f, "pclose.sock");
+	char err[128] = "";
+	bool alive = true;
+	int t;
+	const char *j = "{\"code\":4000,\"message\":\"bye\"}";
+	fd_send_raw (f, R2D_OP_CLOSE, j, strlen (j));
+	pump_until (fd, err, sizeof err, &alive, &t);
+	CHECK (!alive);
+	CHECK (strstr (err, "bye") != NULL);
+	close (fd);
+	fd_stop (f);
+}
+
+static void test_recv_timeout(void) {
+	FakeDiscord *f;
+	int fd = connect_fake (&f, "rto.sock");
+	uint32_t op;
+	char *json = NULL;
+	CHECK (r2d_ipc_recv (fd, &op, &json, 50) == 0);
+	close (fd);
+	fd_stop (f);
+}
+
+static void test_recv_oversize(void) {
+	FakeDiscord *f;
+	int fd = connect_fake (&f, "big.sock");
+	uint32_t op;
+	char *json = NULL;
+	fd_send_raw (f, R2D_OP_FRAME, "{}", 0x7fffffff);
+	CHECK (r2d_ipc_recv (fd, &op, &json, 1000) == -1);
+	close (fd);
+	fd_stop (f);
+}
+
 int main(void) {
 	snprintf (tmpdir, sizeof tmpdir, "/tmp/r2d-test-XXXXXX");
 	if (!mkdtemp (tmpdir)) {
@@ -114,6 +189,10 @@ int main(void) {
 	test_handshake_ok ();
 	test_rejected ();
 	test_server_gone ();
+	test_pump_error_frame ();
+	test_pump_close ();
+	test_recv_timeout ();
+	test_recv_oversize ();
 	test_discovery ();
 	char cmd[300];
 	snprintf (cmd, sizeof cmd, "rm -rf '%s'", tmpdir);

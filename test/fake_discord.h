@@ -17,5 +17,8 @@ bool fd_wait(FakeDiscord *f, uint32_t op, const char *substr, int n, int timeout
 char *fd_last_json(FakeDiscord *f, uint32_t op);
 int fd_connections(FakeDiscord *f);
 void fd_send_ping(FakeDiscord *f);
+// Send one frame to the current client; len overrides the header length
+// field while the body is strlen(json) bytes.
+void fd_send_raw(FakeDiscord *f, uint32_t op, const char *json, uint32_t len);
 
 #endif

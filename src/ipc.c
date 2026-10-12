@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include <errno.h>
+#include <fcntl.h>
 #include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,6 +8,7 @@
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <sys/un.h>
+#include <time.h>
 #include <unistd.h>
 #include <r_util.h>
 #include "ipc.h"
@@ -18,6 +20,13 @@
 #endif
 
 #define R2D_MAX_MSG (64 * 1024)
+#define R2D_PUMP_MAX 16
+
+static int64_t now_ms(void) {
+	struct timespec ts;
+	clock_gettime (CLOCK_MONOTONIC, &ts);
+	return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
 
 static int connect_path(const char *path) {
 	struct sockaddr_un sa;
@@ -28,6 +37,7 @@ static int connect_path(const char *path) {
 	if (fd < 0) {
 		return -1;
 	}
+	fcntl (fd, F_SETFD, FD_CLOEXEC);
 #ifdef SO_NOSIGPIPE
 	int one = 1;
 	setsockopt (fd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof one);
@@ -99,11 +109,15 @@ static bool write_all(int fd, const void *buf, size_t n) {
 	return true;
 }
 
-static bool read_all(int fd, void *buf, size_t n, int timeout_ms) {
+static bool read_all(int fd, void *buf, size_t n, int64_t deadline) {
 	uint8_t *p = buf;
 	while (n > 0) {
 		struct pollfd pf = { fd, POLLIN, 0 };
-		int r = poll (&pf, 1, timeout_ms);
+		int64_t left = deadline - now_ms ();
+		if (left < 0) {
+			left = 0;
+		}
+		int r = poll (&pf, 1, (int)left);
 		if (r < 0 && errno == EINTR) {
 			continue;
 		}
@@ -124,11 +138,17 @@ static bool read_all(int fd, void *buf, size_t n, int timeout_ms) {
 }
 
 bool r2d_ipc_send(int fd, uint32_t op, const char *json) {
-	uint8_t h[8];
-	uint32_t n = strlen (json);
-	put32 (h, op);
-	put32 (h + 4, n);
-	return write_all (fd, h, 8) && write_all (fd, json, n);
+	size_t n = strlen (json);
+	uint8_t *buf = malloc (8 + n);
+	if (!buf) {
+		return false;
+	}
+	put32 (buf, op);
+	put32 (buf + 4, (uint32_t)n);
+	memcpy (buf + 8, json, n);
+	bool ok = write_all (fd, buf, 8 + n);
+	free (buf);
+	return ok;
 }
 
 int r2d_ipc_recv(int fd, uint32_t *op, char **json, int timeout_ms) {
@@ -141,7 +161,8 @@ int r2d_ipc_recv(int fd, uint32_t *op, char **json, int timeout_ms) {
 		return -1;
 	}
 	uint8_t h[8];
-	if (!read_all (fd, h, 8, 1000)) {
+	int64_t deadline = now_ms () + 1000;
+	if (!read_all (fd, h, 8, deadline)) {
 		return -1;
 	}
 	uint32_t n = get32 (h + 4);
@@ -149,7 +170,7 @@ int r2d_ipc_recv(int fd, uint32_t *op, char **json, int timeout_ms) {
 		return -1;
 	}
 	char *buf = malloc (n + 1);
-	if (!buf || !read_all (fd, buf, n, 1000)) {
+	if (!buf || !read_all (fd, buf, n, deadline)) {
 		free (buf);
 		return -1;
 	}
@@ -218,7 +239,7 @@ R2DIpcStatus r2d_ipc_handshake(int fd, const char *appid, char *err, size_t errl
 }
 
 bool r2d_ipc_pump(int fd, char *err, size_t errlen) {
-	while (true) {
+	for (int i = 0; i < R2D_PUMP_MAX; i++) {
 		uint32_t op;
 		char *json = NULL;
 		int r = r2d_ipc_recv (fd, &op, &json, 0);
@@ -242,6 +263,7 @@ bool r2d_ipc_pump(int fd, char *err, size_t errlen) {
 			return false;
 		}
 	}
+	return true;
 }
 
 void r2d_ipc_close(int fd) {

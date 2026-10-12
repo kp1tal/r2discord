@@ -24,6 +24,9 @@ struct FakeDiscord {
 	int cfd;
 	bool stop;
 	bool ping;
+	bool raw;
+	uint32_t raw_op, raw_len;
+	char *raw_json;
 	int conns;
 	int nframes;
 	uint32_t ops[MAXF];
@@ -41,14 +44,18 @@ static uint32_t get32(const uint8_t *p) {
 	return p[0] | p[1] << 8 | p[2] << 16 | (uint32_t)p[3] << 24;
 }
 
-static void sendf(int fd, uint32_t op, const char *json) {
+static void sendf_len(int fd, uint32_t op, const char *json, uint32_t len) {
 	uint8_t h[8];
 	uint32_t n = strlen (json);
 	put32 (h, op);
-	put32 (h + 4, n);
+	put32 (h + 4, len);
 	if (send (fd, h, 8, MSG_NOSIGNAL) == 8) {
 		(void)!send (fd, json, n, MSG_NOSIGNAL);
 	}
+}
+
+static void sendf(int fd, uint32_t op, const char *json) {
+	sendf_len (fd, op, json, strlen (json));
 }
 
 static bool readn(int fd, void *buf, size_t n) {
@@ -93,12 +100,23 @@ static void *run(void *arg) {
 		bool stop = f->stop;
 		bool ping = f->ping;
 		f->ping = false;
+		bool raw = f->raw;
+		uint32_t raw_op = f->raw_op, raw_len = f->raw_len;
+		char *raw_json = f->raw_json;
+		f->raw = false;
+		f->raw_json = NULL;
 		pthread_mutex_unlock (&f->mu);
 		if (stop) {
 			break;
 		}
 		if (ping && f->cfd >= 0) {
 			sendf (f->cfd, 3, "{\"ping\":1}");
+		}
+		if (raw) {
+			if (f->cfd >= 0) {
+				sendf_len (f->cfd, raw_op, raw_json, raw_len);
+			}
+			free (raw_json);
 		}
 		struct pollfd p = { f->cfd >= 0? f->cfd: f->lfd, POLLIN, 0 };
 		if (poll (&p, 1, 20) <= 0) {
@@ -108,6 +126,10 @@ static void *run(void *arg) {
 			int c = accept (f->lfd, NULL, NULL);
 			if (c >= 0) {
 				f->cfd = c;
+#ifdef SO_NOSIGPIPE
+				int one = 1;
+				setsockopt (c, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof one);
+#endif
 				pthread_mutex_lock (&f->mu);
 				f->conns++;
 				pthread_mutex_unlock (&f->mu);
@@ -145,7 +167,6 @@ static void *run(void *arg) {
 }
 
 FakeDiscord *fd_start(const char *path, bool reject) {
-	signal (SIGPIPE, SIG_IGN);
 	FakeDiscord *f = calloc (1, sizeof *f);
 	snprintf (f->path, sizeof f->path, "%s", path);
 	f->reject = reject;
@@ -173,6 +194,7 @@ void fd_stop(FakeDiscord *f) {
 	for (int i = 0; i < f->nframes; i++) {
 		free (f->jsons[i]);
 	}
+	free (f->raw_json);
 	pthread_mutex_destroy (&f->mu);
 	free (f);
 }
@@ -228,5 +250,15 @@ int fd_connections(FakeDiscord *f) {
 void fd_send_ping(FakeDiscord *f) {
 	pthread_mutex_lock (&f->mu);
 	f->ping = true;
+	pthread_mutex_unlock (&f->mu);
+}
+
+void fd_send_raw(FakeDiscord *f, uint32_t op, const char *json, uint32_t len) {
+	pthread_mutex_lock (&f->mu);
+	free (f->raw_json);
+	f->raw_json = strdup (json);
+	f->raw_op = op;
+	f->raw_len = len;
+	f->raw = true;
 	pthread_mutex_unlock (&f->mu);
 }
