@@ -17,6 +17,7 @@ struct R2DWorker {
 	pthread_t th;
 	R2DWorkerTiming t;
 	bool stop;
+	bool done; // thread finished, set under mu
 	// desired state (written by r2, read by the thread)
 	char appid[32];
 	char image[64];
@@ -63,6 +64,13 @@ static void try_connect(R2DWorker *w, uint64_t now) {
 	int fd = r2d_ipc_connect ();
 	R2DIpcStatus st = fd < 0? R2D_IPC_NOSOCKET: r2d_ipc_handshake (fd, appid, err, sizeof err);
 	pthread_mutex_lock (&w->mu);
+	now = now_ms ();
+	if (w->stop) {
+		if (fd >= 0) {
+			close (fd);
+		}
+		return;
+	}
 	if (st == R2D_IPC_OK && !w->app_changed) {
 		w->fd = fd;
 		w->backoff_ms = w->t.backoff_min_ms;
@@ -89,8 +97,9 @@ static void maybe_send(R2DWorker *w, uint64_t now) {
 	if (!w->have && !w->sent_key[0]) {
 		return; // nothing shown, nothing to clear
 	}
-	bool idle = w->have && w->idle_s > 0
-		&& now - __atomic_load_n (&w->last_touch_ms, __ATOMIC_RELAXED) > (uint64_t)w->idle_s * 1000;
+	uint64_t lt = __atomic_load_n (&w->last_touch_ms, __ATOMIC_RELAXED);
+	bool idle = w->have && w->idle_s > 0 && lt <= now
+		&& now - lt > (uint64_t)w->idle_s * 1000;
 	const char *state = idle? "Idle": w->text.state;
 	char key[KEY_MAX];
 	if (w->have) {
@@ -115,6 +124,7 @@ static void maybe_send(R2DWorker *w, uint64_t now) {
 	pthread_mutex_unlock (&w->mu);
 	bool ok = r2d_ipc_send (fd, R2D_OP_FRAME, json);
 	pthread_mutex_lock (&w->mu);
+	now = now_ms ();
 	free (json);
 	if (!ok) {
 		disconnect (w, now);
@@ -132,6 +142,7 @@ static void pump(R2DWorker *w, uint64_t now) {
 	pthread_mutex_unlock (&w->mu);
 	bool alive = r2d_ipc_pump (fd, err, sizeof err);
 	pthread_mutex_lock (&w->mu);
+	now = now_ms ();
 	if (*err) {
 		snprintf (w->err, sizeof w->err, "%s", err);
 	}
@@ -157,11 +168,13 @@ static void *run(void *arg) {
 		}
 		if (w->fd < 0 && w->have && !w->rejected && w->appid[0] && now >= w->next_retry_ms) {
 			try_connect (w, now);
+			now = now_ms ();
 		}
-		if (w->fd >= 0) {
+		if (w->fd >= 0 && !w->stop) {
 			maybe_send (w, now);
+			now = now_ms ();
 		}
-		if (w->fd >= 0) {
+		if (w->fd >= 0 && !w->stop) {
 			pump (w, now);
 		}
 		struct timespec ts;
@@ -182,6 +195,8 @@ static void *run(void *arg) {
 		r2d_ipc_close (w->fd);
 		w->fd = -1;
 	}
+	w->done = true;
+	pthread_cond_broadcast (&w->cv);
 	pthread_mutex_unlock (&w->mu);
 	return NULL;
 }
@@ -247,6 +262,7 @@ void r2d_worker_status(R2DWorker *w, char *buf, size_t len) {
 	pthread_mutex_lock (&w->mu);
 	const char *conn = w->fd >= 0? "connected"
 		: w->rejected? "rejected by Discord (change discord.appid to retry)"
+		: (!w->have || !w->appid[0])? "not connected (nothing to show yet)"
 		: "not connected (is Discord running?)";
 	snprintf (buf, len, "status: %s%s%s\nappid: %s\ndetails: %s\nstate: %s",
 		conn, w->err[0]? "\nerror: ": "", w->err, w->appid,
@@ -262,6 +278,27 @@ void r2d_worker_free(R2DWorker *w) {
 	pthread_mutex_lock (&w->mu);
 	w->stop = true;
 	pthread_cond_signal (&w->cv);
+	uint64_t deadline = now_ms () + 1000;
+	while (!w->done) {
+		uint64_t n = now_ms ();
+		if (n >= deadline) {
+			// Intentional leak: the still-running thread must never touch
+			// freed memory. Only happens with an unresponsive Discord at exit.
+			pthread_detach (w->th);
+			pthread_mutex_unlock (&w->mu);
+			return;
+		}
+		struct timespec ts;
+		clock_gettime (CLOCK_REALTIME, &ts);
+		uint64_t left = deadline - n;
+		ts.tv_sec += left / 1000;
+		ts.tv_nsec += (long)(left % 1000) * 1000000;
+		if (ts.tv_nsec >= 1000000000) {
+			ts.tv_sec++;
+			ts.tv_nsec -= 1000000000;
+		}
+		pthread_cond_timedwait (&w->cv, &w->mu, &ts);
+	}
 	pthread_mutex_unlock (&w->mu);
 	pthread_join (w->th, NULL);
 	pthread_mutex_destroy (&w->mu);

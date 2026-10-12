@@ -1,5 +1,7 @@
 #define _GNU_SOURCE
 #include <stdlib.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <time.h>
 #include <unistd.h>
 #include "t.h"
@@ -85,10 +87,49 @@ static void test_idle(void) {
 	CHECK (fd_wait (f, R2D_OP_FRAME, "At the prompt", 1, 1000));
 	CHECK (fd_count (f, R2D_OP_FRAME, "\"Idle\"") == 0);
 	CHECK (fd_wait (f, R2D_OP_FRAME, "\"Idle\"", 1, 2500));
+	CHECK (fd_count (f, R2D_OP_FRAME, "\"details\":\"d\"") >= 2);
+	char *last = fd_last_json (f, R2D_OP_FRAME);
+	CHECK (last && strstr (last, "\"Idle\"") && strstr (last, "\"details\":\"d\""));
+	free (last);
 	r2d_worker_touch (w);
 	CHECK (fd_wait (f, R2D_OP_FRAME, "At the prompt", 2, 1000));
 	r2d_worker_free (w);
 	fd_stop (f);
+}
+
+static void test_idle_disabled(void) {
+	char p[300];
+	FakeDiscord *f = start_fake ("noidle.sock", false, p, sizeof p);
+	R2DWorker *w = r2d_worker_new (&fast);
+	r2d_worker_set_app (w, "1", "r2");
+	r2d_worker_set_idle (w, 0);
+	r2d_worker_touch (w);
+	upd (w, "d", "At the prompt");
+	CHECK (fd_wait (f, R2D_OP_FRAME, "At the prompt", 1, 1000));
+	usleep (1500000);
+	CHECK (fd_count (f, R2D_OP_FRAME, "\"Idle\"") == 0);
+	r2d_worker_free (w);
+	fd_stop (f);
+}
+
+static void test_bounded_free(void) {
+	char p[300];
+	snprintf (p, sizeof p, "%s/mute.sock", tmpdir);
+	setenv ("R2DISCORD_IPC_PATH", p, 1);
+	int ls = socket (AF_UNIX, SOCK_STREAM, 0);
+	struct sockaddr_un a = { .sun_family = AF_UNIX };
+	CHECK (strlen (p) < sizeof a.sun_path);
+	memcpy (a.sun_path, p, strlen (p) < sizeof a.sun_path? strlen (p): sizeof a.sun_path - 1);
+	CHECK (ls >= 0 && bind (ls, (struct sockaddr *)&a, sizeof a) == 0 && listen (ls, 4) == 0);
+	R2DWorker *w = r2d_worker_new (&fast);
+	r2d_worker_set_app (w, "1", "r2");
+	upd (w, "d", "s");
+	usleep (200000); // handshake is in flight, peer never answers
+	uint64_t t0 = ms ();
+	r2d_worker_free (w);
+	CHECK (ms () - t0 < 1500);
+	close (ls);
+	unlink (p);
 }
 
 static void test_reconnect(void) {
@@ -149,9 +190,11 @@ int main(void) {
 	test_basic_and_free ();
 	test_coalesce ();
 	test_idle ();
+	test_idle_disabled ();
 	test_reconnect ();
 	test_rejected ();
 	test_no_discord ();
+	test_bounded_free ();
 	char cmd[300];
 	snprintf (cmd, sizeof cmd, "rm -rf '%s'", tmpdir);
 	(void)!system (cmd);
