@@ -4,10 +4,20 @@ Discord Rich Presence for [radare2](https://github.com/radareorg/radare2).
 
 Shows what you are doing in r2 on your Discord profile:
 
-> **radare2**
-> x86-64 ELF · 312 fns · 4 bps
-> 🐞 Debugging
-> 00:12:34 elapsed
+<table>
+  <tr>
+    <th>Prompt</th>
+    <th>Visual mode</th>
+    <th>Debugging</th>
+    <th>Idle</th>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/prompt.png" alt="radare2 at the prompt" width="200"></td>
+    <td><img src="docs/screenshots/visual.png" alt="radare2 in visual mode" width="200"></td>
+    <td><img src="docs/screenshots/debugging.png" alt="radare2 debugging" width="200"></td>
+    <td><img src="docs/screenshots/idle.png" alt="radare2 idle" width="200"></td>
+  </tr>
+</table>
 
 It is private by default: file and function names are only shown after
 `e discord.showname=true`.
